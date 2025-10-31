@@ -33,6 +33,7 @@ We modeled the non-linear relationship between county-level poverty and vaccinat
 We applied exploratory data analysis and a one-way ANOVA to identify differences in vaccination rates across racial and ethnic groups, supported by resampling simulations to check power and Type I error.
 
 ## Key Findings
+![Key Findings1](Distribution of 1-dose Vaccination Rates and 2-dose Vaccination Rate.png)
 
 States that adopted Medicaid expansion showed notably higher COVID-19 vaccination rates for both one-dose and two-dose completions, supported by permutation test p-values of 0.016 and 0.04, respectively. The bootstrapped 95% confidence intervals indicating mean differences between 2.20–14.85 and 4.97–13.88. Regarding the correlation between the poverty level and COVID-19 vaccination rate, at the county level, vaccination rates generally declined as poverty rates increased up to about 23%, after which the trend fluctuated. This reflected a non-linear relationship influenced by limited data from high-poverty areas. In addition, analysis by race and ethnicity revealed statistically significant disparities (p < 2e−16). It shows that demographic factors play a major role in vaccination outcomes across the United States.
 
