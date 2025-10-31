@@ -12,17 +12,17 @@ Using county- and state-level data, we explore the socio-economic determinants b
 
 The analysis integrates state-level and county-level data to test the following hypotheses:
 
-H_1: States that adopted Medicaid expansion exhibit higher COVID-19 vaccination rates.
+H1: States that adopted Medicaid expansion exhibit higher COVID-19 vaccination rates.
 
-H_2: County-level poverty is inversely associated with vaccination rates.
+H2: County-level poverty is inversely associated with vaccination rates.
 
-H_3: Vaccination uptake differs significantly across racial and ethnic groups.
+H3: Vaccination uptake differs significantly across racial and ethnic groups.
 
 To test these hypotheses, a combination of non-parametric inference, smoothing estimation, and variance analysis was implemented using R.
 
 2. Medicaid Expansion and Vaccination Rate
 
-We compared states with and without Medicaid expansion using a permutation test to assess mean differences in vaccination rates, and a bootstrap method (1,000 replicates) to calculate a 95% confidence interval for those differences.
+We compared states with and without Medicaid expansion using a permutation test to assess mean differences in vaccination rates, and a bootstrap method (1,000     replicates) to calculate a 95% confidence interval for those differences.
 
 3. Poverty Level and Vaccination Rate
 
