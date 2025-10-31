@@ -1,0 +1,314 @@
+---
+title: "Medicaid Expansion"
+output:
+  html_document: default
+date: "2023-12-01"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Overview of the relationship between Medicaid Expasion and COVID-19 Vaccine Rate
+The implementation of Medicaid expansion may contribute to the unequal distribution of COVID-19 vaccinations. Research indicates a close correlation between an individual's medical insurance status and their health behavior during the pandemic. For an individual, Uninsured individuals, often characterized by low income, face greater threats from COVID-19. Due to poverty, they cannot afford medical care and lack awareness about seeking medical advice, potentially leading to negative attitudes towards the pandemic and vaccination. This reluctance to get vaccinated can cause variations in overall vaccination rates. Therefore, it is crucial for states to implement Medicaid expansion to provide more active protection against COVID-19.
+
+From the level of state, Rakus and Soni suggest that with state Medicaid expansion plans, there is a tendency to follow federal policy changes, facilitating the continuity of medical coverage. Increased financial security might encourage people to adopt better health measures, including getting vaccinated.
+
+Inspired by studies examining how state Medicaid expansion influences individuals' health behavior during COVID-19, we aim to evaluate the correlation between the implementation of Medicaid expansion plans and COVID-19 vaccination rates. On one hand, Medicaid expansion is closely associated with the medical status of impoverished individuals, offering insights into the relationship between poverty rates and vaccination distribution. On the other hand, as an important socio-political factor, the implementation of Medicaid expansion plans aligns with our research theme, helping us understand the driving force of unequal vaccination distribution.
+
+## Methods and Simulation (Need specification later)
+Based on our research interest, we pick the data of the status of state medicaid expansion in 2021 and 2022 since the first vaccination began available in Dec 2022 (HHS.gov). Also, we used the COVID-19 vaccination rate at the state level to represent the vaccination distribution. In terms of the data source, we used the dataset from Our World In Data and KKF, which devoted to independent health data research. Both of them took the data from CDC, which is reliable. 
+
+For the method, based on the class content, we chose bootstrapping and permutation tests to explore the correlation between the implementation of state madicaid expansion plan and the vaccination rate. More specifically, on the one hand, the bootstrapping is based on the mean difference of the vaccination rate difference between states with and without the madicaid expansion plan. This method provides an insightful overview of vaccination rate trends under varying statuses of state Medicaid Expansion plans. By employing bootstrapping within our time series model, we can simulate and analyze how the implmentation of madicaid expansion plan might influence the vaccination distribution, thus offering a dynamic perspective on how Medicaid expansion might influence these rates over time.On the other hand, the two-sample permutation test will test whether the the medicaid expansion plan would impact the 1st-dose vaccination rate and 2nd-dose vaccination rate. Such an approach is particularly beneficial in this context as it does not assume a normal distribution of the data and is robust to the sample size variations, making it a suitable choice for our analysis.
+
+## Implementation
+# Setup
+```{r}
+set.seed(123)  
+library(dplyr)
+library(boot)
+library(ggplot2)
+vaccination_data <- read.csv("US State Vaccination.csv")
+medicaid_data <- read.csv("Medicaid Expansion Vaccination Data.csv")
+```
+# Data merging
+```{r}
+medicaid_data <- medicaid_data %>%
+  mutate(StatusCategory = case_when(
+    Status.of.Medicaid.Expansion.Decision.2021. == TRUE & Status.of.Medicaid.Expansion.Decision.2022. == TRUE ~ "Implemented",
+    Status.of.Medicaid.Expansion.Decision.2021. == FALSE & Status.of.Medicaid.Expansion.Decision.2022. == FALSE ~ "Not Implemented",
+    TRUE ~ "Changed"
+  ))
+
+vaccination_data$Date <- as.Date(vaccination_data$Date, format = "%Y-%m-%d")
+
+combined_data <- vaccination_data %>%
+  left_join(medicaid_data, by = "State")
+
+processed_data <- combined_data %>%
+  group_by(Date, StatusCategory) %>%
+  summarize(AvgVaccinationRate = mean(people_fully_vaccinated_per_hundred, na.rm = TRUE), .groups = 'drop') %>%
+  filter(!is.na(AvgVaccinationRate) & !is.na(StatusCategory)) # na value in status category is caused by unavailable vaccination rate data on some dates.
+```
+# Data characteristics
+```{r}
+number_of_states_expanded_2021 <- medicaid_data %>%
+  filter(medicaid_data$Status.of.Medicaid.Expansion.Decision.2021. == TRUE) %>%
+  summarise(count = n())
+
+number_of_states_expanded_2022 <- medicaid_data %>%
+  filter(medicaid_data$Status.of.Medicaid.Expansion.Decision.2022. == TRUE) %>%
+  summarise(count = n())
+
+number_of_states_expanded_2021
+number_of_states_expanded_2022
+```
+# Bootstarpping for the mean estimated difference of COVID-19 Vaccination rate between states with madicaid plan and without
+```{r}
+library(boot)
+medicaid_data$Vaccination.Rate..1.dose. <- as.numeric(gsub("[%,]", "", medicaid_data$Vaccination.Rate..1.dose.))
+medicaid_data$Vaccination.Rate..2.dose. <- as.numeric(gsub("[%,]", "", medicaid_data$Vaccination.Rate..2.dose.))
+
+data_expanded <- medicaid_data %>% filter(Status.of.Medicaid.Expansion.Decision.2022. == TRUE)
+data_not_expanded <- medicaid_data %>% filter(Status.of.Medicaid.Expansion.Decision.2022. == FALSE)
+
+mean_diff_dose1 <- function(data, indices) {
+  data_star <- data[indices, ]
+  mean_expanded <- mean(data_star$Vaccination.Rate..1.dose.[data_star$Status.of.Medicaid.Expansion.Decision.2022. == TRUE], na.rm = TRUE)
+  mean_not_expanded <- mean(data_star$Vaccination.Rate..1.dose.[data_star$Status.of.Medicaid.Expansion.Decision.2022. == FALSE], na.rm = TRUE)
+  return(mean_expanded - mean_not_expanded)
+}
+bootstrap_results <- boot(data = medicaid_data, statistic = mean_diff_dose1, R = 1000)
+CI_dose1 <- boot.ci(bootstrap_results, type = "basic")
+
+mean_diff_dose2 <- function(data, indices) {
+  data_star <- data[indices, ]
+  mean_expanded <- mean(data_star$Vaccination.Rate..2.dose.[data_star$Status.of.Medicaid.Expansion.Decision.2022. == TRUE], na.rm = TRUE)
+  mean_not_expanded <- mean(data_star$Vaccination.Rate..2.dose.[data_star$Status.of.Medicaid.Expansion.Decision.2022. == FALSE], na.rm = TRUE)
+  return(mean_expanded - mean_not_expanded)
+}
+bootstrap_results <- boot(data = medicaid_data, statistic = mean_diff_dose2, R = 1000)
+CI_dose2 <- boot.ci(bootstrap_results, type = "basic")
+```
+# Permutation test
+```{r}
+medicaid_data$Vaccination.Rate..1.dose. <- as.numeric(gsub("[%,]", "", medicaid_data$Vaccination.Rate..1.dose.))
+vaccine_rate_expaned_dose1 <- 
+  medicaid_data$Vaccination.Rate..1.dose.[medicaid_data$Status.of.Medicaid.Expansion.Decision.2021.==TRUE]
+vaccine_rate_not_expaned_dose1 <-
+  medicaid_data$Vaccination.Rate..1.dose.[medicaid_data$Status.of.Medicaid.Expansion.Decision.2021.==FALSE]
+
+medicaid_data$Vaccination.Rate..2.dose. <- as.numeric(gsub("[%,]", "", medicaid_data$Vaccination.Rate..2.dose.))
+vaccine_rate_expaned_dose2 <- 
+  medicaid_data$Vaccination.Rate..2.dose.[medicaid_data$Status.of.Medicaid.Expansion.Decision.2021.==TRUE]
+vaccine_rate_not_expaned_dose2 <-
+  medicaid_data$Vaccination.Rate..2.dose.[medicaid_data$Status.of.Medicaid.Expansion.Decision.2021.==FALSE]
+
+permutation_test <- function(x, y, k) {
+  combined <- c(x, y)
+  len_x <- length(x)
+  obs_diff <- mean(x) - mean(y)
+  perm_diffs <- replicate(k, {
+    shuffled <- sample(combined)
+    mean(shuffled[1:len_x]) - mean(shuffled[(len_x + 1):length(shuffled)])
+  })
+  p_val <- mean(abs(perm_diffs) >= abs(obs_diff))
+  return(list(p_value = p_val, perm_diffs = perm_diffs, obs_diff = obs_diff))
+}
+
+p_value_dose1_2021 <- permutation_test(vaccine_rate_expaned_dose1, vaccine_rate_not_expaned_dose1, 1000)
+p_value_dose2_2021 <- permutation_test(vaccine_rate_expaned_dose2, vaccine_rate_not_expaned_dose2, 1000)
+```
+
+```{r}
+vaccine_rate_expaned_dose1_2022 <- 
+  medicaid_data$Vaccination.Rate..1.dose.[medicaid_data$Status.of.Medicaid.Expansion.Decision.2022.==TRUE]
+vaccine_rate_not_expaned_dose1_2022 <-
+  medicaid_data$Vaccination.Rate..1.dose.[medicaid_data$Status.of.Medicaid.Expansion.Decision.2022.==FALSE]
+
+vaccine_rate_expaned_dose2_2022 <- 
+  medicaid_data$Vaccination.Rate..2.dose.[medicaid_data$Status.of.Medicaid.Expansion.Decision.2022.==TRUE]
+vaccine_rate_not_expaned_dose2_2022 <-
+  medicaid_data$Vaccination.Rate..2.dose.[medicaid_data$Status.of.Medicaid.Expansion.Decision.2022.==FALSE]
+
+permutation_test <- function(x, y, k) {
+  combined <- c(x, y)
+  len_x <- length(x)
+  obs_diff <- mean(x) - mean(y)
+  perm_diffs <- replicate(k, {
+    shuffled <- sample(combined)
+    mean(shuffled[1:len_x]) - mean(shuffled[(len_x + 1):length(shuffled)])
+  })
+  p_val <- mean(abs(perm_diffs) >= abs(obs_diff))
+  return(list(p_value = p_val, perm_diffs = perm_diffs, obs_diff = obs_diff))
+}
+
+p_value_dose1_2022 <- permutation_test(vaccine_rate_expaned_dose1_2022, vaccine_rate_not_expaned_dose1_2022, 1000)
+p_value_dose2_2022 <- permutation_test(vaccine_rate_expaned_dose2_2022, vaccine_rate_not_expaned_dose2_2022, 1000)
+```
+## Results
+visualization 1 (overview) 
+```{r}
+ggplot(processed_data, aes(x = Date, y = AvgVaccinationRate, color = StatusCategory)) +
+  geom_line() +
+  labs(title = "COVID-19 Vaccination Rates by Medicaid Expansion Status",
+       x = "Date", y = "Average Vaccination Rate (%)")+
+  theme_minimal()
+```
+*changed: the state who started to implement Madicaid plan in 2022
+
+In this graph, it shows that the great difference in the vaccination rate between different statuses of state madicaid plan, which the state with madicaid plan tends to share a higher vaccination rate, which aligns with the results of the previous papers. Also, it terms of time lapse, we've noticed that the difference in vaccination rate becomes greater at the later stage of the vaccination period, which implies the status of state madicaid plan might contribute to later vaccination progress (I might need to read more paper to justify this in discussion ). 
+# results of bootstrapping
+```{r}
+CI_dose1
+CI_dose2
+```
+From the bootstrapping results, there is a evident difference in the mean difference of vaccination rate between the state implemented the madicaid expansion and the state did not. The difference is slightly evident for the 2nd dose, which might suggest the greater influence of madicaid expansion plan on the 2nd vaccination rate. It might align with the results of the difference in vaccination rate among different statues of state madicaid expansion, which the difference is greater at the latter stage of vaccination. Both of them suggests the status of state madicaid expansion plan play an important role at the later period of vaccination, where 2nd dose vaccination started to promote. 
+# results of perumutation test 
+```{r}
+#Status of Medicaid Expansion in 2021
+results_dose1_2021 <- permutation_test(vaccine_rate_expaned_dose1, vaccine_rate_not_expaned_dose1, 1000)
+
+hist(results_dose1_2021$perm_diffs, breaks = 30, main = "Permutation Test Statistics Distribution for 1-dose Vaccination Rate", xlab = "Permuted Mean Differences in 1-dose Vaccination Rate")
+abline(v = results_dose1_2021$obs_diff, col = "red", lwd = 2)
+
+results_dose2_2021 <- permutation_test(vaccine_rate_expaned_dose2, vaccine_rate_not_expaned_dose2, 1000)
+
+hist(results_dose2_2021$perm_diffs, breaks = 30, main = "Permutation Test Statistics Distribution for 2-dose Vaccination Rate by Status of Medicaid Expansion in 2021", xlab = "Permuted Mean Differences in 2-dose Vaccination Rate")
+abline(v = results_dose2_2021$obs_diff, col = "red", lwd = 2)
+
+#Status of Medicaid Expansion in 2022
+results_dose1_2022 <- permutation_test(vaccine_rate_expaned_dose1_2022, vaccine_rate_not_expaned_dose1_2022, 1000)
+
+hist(results_dose1_2022$perm_diffs, breaks = 30, main = "Permutation Test Statistics Distribution for 1-dose Vaccination Rate", xlab = "Permuted Mean Differences in 1-dose Vaccination Rate")
+abline(v = results_dose1_2022$obs_diff, col = "red", lwd = 2)
+
+results_dose2_2022 <- permutation_test(vaccine_rate_expaned_dose2_2022, vaccine_rate_not_expaned_dose2_2022, 1000)
+
+hist(results_dose2_2022$perm_diffs, breaks = 30, main = "Permutation Test Statistics Distribution for 2-dose Vaccination Rate", xlab = "Permuted Mean Differences in 2-dose Vaccination Rate")
+abline(v = results_dose1_2022$obs_diff, col = "red", lwd = 2)
+
+results_dose1_2022$p_value
+results_dose2_2022$p_value
+```
+## Density Plot
+```{r}
+# Creating data frames for each category
+data_vac_dose1_expand_2021 <- data.frame(Vaccination_Rate = vaccine_rate_expaned_dose1, Dose = "Dose 1", Year = "2021", Group = "Expanded")
+data_vac_dose1_not_expand_2021 <- data.frame(Vaccination_Rate = vaccine_rate_not_expaned_dose1, Dose = "Dose 1", Year = "2021", Group = "Not Expanded")
+data_vac_dose1_expand_2022 <- data.frame(Vaccination_Rate = vaccine_rate_expaned_dose1_2022, Dose = "Dose 1", Year = "2022", Group = "Expanded")
+data_vac_dose1_not_expand_2022 <- data.frame(Vaccination_Rate = vaccine_rate_not_expaned_dose1_2022, Dose = "Dose 1", Year = "2022", Group = "Not Expanded")
+
+data_vac_dose2_expand_2021 <- data.frame(Vaccination_Rate = vaccine_rate_expaned_dose2, Dose = "Dose 2", Year = "2021", Group = "Expanded")
+data_vac_dose2_not_expand_2021 <- data.frame(Vaccination_Rate = vaccine_rate_not_expaned_dose2, Dose = "Dose 2", Year = "2021", Group = "Not Expanded")
+data_vac_dose2_expand_2022 <- data.frame(Vaccination_Rate = vaccine_rate_expaned_dose2_2022, Dose = "Dose 2", Year = "2022", Group = "Expanded")
+data_vac_dose2_not_expand_2022 <- data.frame(Vaccination_Rate = vaccine_rate_not_expaned_dose2_2022, Dose = "Dose 2", Year = "2022", Group = "Not Expanded")
+
+# Combining the data frames
+combined_data <- rbind(data_vac_dose1_expand_2022, data_vac_dose1_not_expand_2022,
+                       data_vac_dose2_expand_2022, data_vac_dose2_not_expand_2022)
+
+# Create the density plots
+ggplot(combined_data, aes(x = Vaccination_Rate, fill = Group)) +
+  geom_density(alpha = 0.5) +
+  facet_grid(Dose ~ Year) + 
+  labs(title = "Distribution of 1-dose Vaccination Rates and 2-dose Vaccination Rate", x = "Vaccination Rate", y = "Density") +
+  scale_fill_brewer(palette = "Set1") +
+  theme_minimal()
+```
+The results of p-value are both less than 0.05. It suggests that there is a difference in  dose vaccination rate between states with state madicaid expansion plan and without. Therefore, it implies that association between vaccination rate and the implementation of state madicaid expansion plan. Also, the lower p-value for the 2nd dose compared to the 1st dose suggests a stronger statistical evidence of a difference in vaccination rates between the groups for the 2nd dose.
+## boxplot
+```{r}
+dose1_data <- data.frame(State = medicaid_data$State,
+                         Vaccination_Rate = medicaid_data$Vaccination.Rate..1.dose.,  
+                         Dose_Type = "1 Dose",
+                         Medicaid_Expansion_Status = medicaid_data$Status.of.Medicaid.Expansion.Decision.2022.)  
+
+dose2_data <- data.frame(State = medicaid_data$State,
+                         Vaccination_Rate = medicaid_data$Vaccination.Rate..2.dose.,  
+                         Dose_Type = "2 Dose",
+                         Medicaid_Expansion_Status = medicaid_data$Status.of.Medicaid.Expansion.Decision.2022.) 
+
+
+dose_data <- rbind(dose1_data, dose2_data)
+
+ggplot(dose_data, aes(x = Dose_Type, y = Vaccination_Rate)) +
+  geom_boxplot() +
+  facet_wrap(~Medicaid_Expansion_Status) +
+  labs(title = "Comparison of Average Vaccination Rates",
+       x = "Vaccination Dose Type",
+       y = "Average Vaccination Rate (%)") +
+  theme_minimal()
+```
+## Simulation
+```{r}
+generate_normal_data <- function(n) {
+  group1 <- rnorm(n / 2, mean = 50, sd = 1)  
+  group2 <- rnorm(n / 2, mean = 50, sd = 1)  
+  data <- c(group1, group2)
+  group_labels <- c(rep(1, n / 2), rep(0, n / 2))
+  return(data.frame(observation = data, outcome = group_labels))
+}
+
+generate_skewed_data <- function(n) {
+  group1 <- rlnorm(n / 2, meanlog = log(50), sdlog = 1.5)
+  group2 <- rlnorm(n / 2, meanlog = log(60), sdlog = 1.5)
+  data <- c(group1, group2)
+  group_labels <- c(rep(1, n / 2), rep(0, n / 2))
+  return(data.frame(observation = data, outcome = group_labels))
+}
+
+generate_exponential_data <- function(n) {
+  group1 <- rexp(n / 2, rate = 0.02)
+  group2 <- rexp(n / 2, rate = 2)
+  data <- c(group1, group2)
+  group_labels <- c(rep(1, n / 2), rep(0, n / 2))
+  return(data.frame(observation = data, outcome = group_labels))
+}
+
+
+t_test_result <- function(data) {
+  test <- t.test(observation ~ outcome, data = data)
+  return(test$p.value)
+}
+
+permutation_test <- function(x, y, k) {
+  combined <- c(x, y)
+  len_x <- length(x)
+  obs_diff <- mean(x) - mean(y)
+  perm_diff <- replicate(k, {
+    shuffled <- sample(combined)
+    mean(shuffled[1:len_x]) - mean(shuffled[(len_x + 1):length(shuffled)])
+  })
+  return(mean(abs(perm_diff) >= abs(obs_diff)))
+}
+
+normal_data <- generate_normal_data(1000)
+skewed_data <- generate_skewed_data(1000)
+exponential_data <- generate_exponential_data(1000)
+
+p_val_normal_ttest <- t_test_result(normal_data)
+p_val_skewed_ttest <- t_test_result(skewed_data)
+p_val_exp_ttest <- t_test_result(exponential_data)
+p_val_normal_perm <- permutation_test(normal_data$observation[normal_data$outcome == 1],
+                                      normal_data$observation[normal_data$outcome == 0], 
+                                      1000)
+p_val_skewed_perm <- permutation_test(skewed_data$observation[skewed_data$outcome == 1],
+                                      skewed_data$observation[skewed_data$outcome == 0], 
+                                      1000)
+p_val_exp_perm <- permutation_test(exponential_data$observation[exponential_data$outcome == 1],
+                                      exponential_data$observation[exponential_data$outcome == 0], 
+                                      1000)
+
+
+p_val_normal_ttest
+p_val_normal_perm
+
+p_val_skewed_ttest
+p_val_skewed_perm
+
+p_val_exp_ttest
+p_val_exp_perm
+```
+## Discussion and insights
+-greater influence on 2nd dose and implication?
+-Mandatary vaccination --> higher completion of 1st dose vaccination rate
